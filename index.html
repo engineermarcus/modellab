@@ -255,6 +255,8 @@ async function pump(){
 const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){io.unobserve(e.target);q.push(e.target._it);pump()}}),{rootMargin:'400px'});
 
 /* ---------- library ---------- */
+const API='https://marx21-cortex-lexicon.hf.space';let KEY='';
+async function loadList(){const r=await fetch(API+'/api/assets');if(!r.ok)throw new Error('library HTTP '+r.status);return r.json()}
 const items=[];let uid=0;
 const lib=()=>items.filter(i=>i.source==='library');
 function makeItem(o){
@@ -300,7 +302,7 @@ el.conv.onclick=async()=>{
     const {Client}=await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
     const app=await Client.connect(SPACE);
     const blob=await (await fetch(it.url)).blob();
-    const res=await app.predict('/convert',[new File([blob],it.name)]);
+    const res=await Promise.race([app.predict('/convert',[new File([blob],it.name)]),new Promise((_,rj)=>setTimeout(()=>rj(new Error('Timed out after 90s waiting for the converter')),90000))]);
     const f=res.data[0];
     const out=await (await fetch(f.url)).blob();
     const nit=makeItem({name:it.name.replace(/\.glb$/i,'.fbx'),url:URL.createObjectURL(out),size:out.size,source:'yours'});
@@ -342,9 +344,9 @@ $('#save').onclick=async()=>{
 /* ---------- start ---------- */
 (async()=>{
   try{
-    const m=await (await fetch('manifest.json')).json();
+    const m=await loadList();
     const g=$('#grid');
-    for(const x of m){const it=makeItem({name:x.name,url:'assets/'+encodeURIComponent(x.name),size:x.size});items.push(it);g.append(cardFor(it))}
+    for(const x of m){const it=makeItem({name:x.name,url:API+'/api/asset/'+encodeURIComponent(x.name),size:x.size});items.push(it);g.append(cardFor(it))}
     $('#count').textContent=m.length;chips();apply();
     const L=lib();
     const first=L.find(i=>/dragon/i.test(i.name))||L.find(i=>i.cat==='Characters')||L[0];
