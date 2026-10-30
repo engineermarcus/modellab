@@ -294,15 +294,16 @@ $('#file').onchange=e=>{
 };
 
 /* ---------- convert ---------- */
+const W=(p,ms,l)=>Promise.race([p,new Promise((_,rj)=>setTimeout(()=>rj(new Error('Stuck at: '+l+' (waited '+ms/1000+'s)')),ms))]);
 el.conv.onclick=async()=>{
   const it=curItem;if(!it||it.ext!=='glb')return;
   el.conv.disabled=true;el.conv.textContent='Converting';
   setMsg('Sending to the converter. The first run can take a minute while the server wakes up.');
   try{
-    const {Client}=await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
-    const app=await Client.connect(SPACE);
-    const blob=await (await fetch(it.url)).blob();
-    const res=await Promise.race([app.predict('/convert',[new File([blob],it.name)]),new Promise((_,rj)=>setTimeout(()=>rj(new Error('Timed out after 90s waiting for the converter')),90000))]);
+    setMsg('Step 1/4: loading converter client');const {Client}=await W(import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js'),30000,'step 1, loading the converter client');
+    setMsg('Step 2/4: connecting to the Space');const app=await W(Client.connect(SPACE),40000,'step 2, connecting to the Space');
+    setMsg('Step 3/4: reading the model file');const blob=await W(fetch(it.url).then(r=>r.blob()),40000,'step 3, reading the model file');
+    setMsg('Step 4/4: uploading and converting');const res=await Promise.race([app.predict('/convert',[new File([blob],it.name)]),new Promise((_,rj)=>setTimeout(()=>rj(new Error('Timed out after 90s waiting for the converter')),90000))]);
     const f=res.data[0];
     const out=await (await fetch(f.url)).blob();
     const nit=makeItem({name:it.name.replace(/\.glb$/i,'.fbx'),url:URL.createObjectURL(out),size:out.size,source:'yours'});
