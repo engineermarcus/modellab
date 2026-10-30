@@ -199,6 +199,7 @@ function pick(i){
 }
 el.play.onclick=()=>{if(!mixer)return;paused=!paused;mixer.timeScale=paused?0:1;el.play.textContent=paused?'Play':'Pause'};
 
+function toStd(o){o.traverse(n=>{if(!n.isMesh||!n.material)return;const a=Array.isArray(n.material);const ms=(a?n.material:[n.material]).map(m=>{if(m.isMeshStandardMaterial)return m;const s=new THREE.MeshStandardMaterial({color:m.color,map:m.map,normalMap:m.normalMap,transparent:m.transparent,opacity:m.opacity,alphaTest:m.alphaTest,side:m.side,roughness:.7,metalness:0});s.name=m.name;m.dispose();return s});n.material=a?ms:ms[0]})}
 async function show(it){
   const my=++token;curItem=it;
   document.querySelectorAll('.card[aria-current]').forEach(c=>c.removeAttribute('aria-current'));
@@ -214,7 +215,7 @@ async function show(it){
     const d=await loaders[it.ext](it.url,e=>{if(e.lengthComputable&&e.total)el.spin.textContent='Loading '+Math.round(e.loaded/e.total*100)+'%'});
     if(my!==token){free(d.obj);return}
     if(cur){scene.remove(cur);free(cur)}
-    cur=d.obj;const size=normalise(cur);scene.add(cur);
+    cur=d.obj;if(it.ext==='fbx')toStd(cur);const size=normalise(cur);scene.add(cur);
     blob.scale.setScalar(Math.max(size.x,size.z,0.3)*1.6);
     resize();frame(cam,ctl,size);ctl.autoRotate=!reduce;
     clips=d.clips;mixer=new THREE.AnimationMixer(cur);paused=false;el.play.textContent='Pause';
