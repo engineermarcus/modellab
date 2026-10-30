@@ -11,7 +11,7 @@ canvas{width:100%;height:100%;display:block}
 .bar{padding:6px}
 pre{white-space:pre-wrap;font-size:12px;color:#9c9;margin:6px}
 </style>
-<header><label class=b>Add files<input id=f type=file multiple accept=".glb,.fbx" hidden></label> <span id=st></span></header>
+<header><label class=b>Add files<input id=f type=file multiple accept=".glb,.fbx" hidden></label> <input id=q placeholder="search" style="background:#222;color:#eee;border:1px solid #444;border-radius:6px;padding:8px;margin:2px;width:35%"> <span id=st></span></header>
 <div id=list></div>
 <script type=importmap>{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
 <script type=module>
@@ -84,13 +84,13 @@ function addCard(name,url,file,log){
   if(log)pre.textContent=log;
   $('#list').prepend(el);
   const dl=document.createElement('a');dl.className='b';dl.href=url;dl.download=name;dl.textContent='Download';bar.append(dl);
-  if(ext==='glb'&&file){
+  if(ext==='glb'){
     const b=document.createElement('button');b.textContent='Convert → FBX';
     b.onclick=async()=>{
       b.disabled=true;status('converting '+name+' (first call may wake the Space)…');
       try{
         const app=await getClient();
-        const res=await app.predict('/convert',[file]);
+        const fl=file||new File([await (await fetch(url)).blob()],name);const res=await app.predict('/convert',[fl]);
         const f=res.data[0];
         const bl=await (await fetch(f.url)).blob();
         addCard(name.replace(/\.glb$/i,'.fbx'),URL.createObjectURL(bl),null,res.data[1]);
@@ -103,4 +103,6 @@ function addCard(name,url,file,log){
   viewer(host,url,ext,bar,pre);
 }
 $('#f').onchange=e=>{for(const f of e.target.files)addCard(f.name,URL.createObjectURL(f),f);e.target.value=''};
+$('#q').oninput=e=>{const t=e.target.value.toLowerCase();document.querySelectorAll('.card').forEach(c=>c.style.display=c.querySelector('h4').textContent.toLowerCase().includes(t)?'':'none')};
+try{const m=await (await fetch('manifest.json')).json();status(m.length+' models');for(const x of m.slice().reverse())addCard(x.name,'assets/'+encodeURIComponent(x.name),null,(x.size/1e6).toFixed(1)+' MB')}catch(e){status('no manifest')}
 </script>
