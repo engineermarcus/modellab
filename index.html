@@ -325,7 +325,7 @@ async function refreshLib(){
 $('#save').onclick=async()=>{
   const list=items.filter(i=>i.source==='yours'&&i.file&&!i.saved);
   if(!list.length){setMine('Nothing new to save.');return}
-  if(!KEY){KEY=prompt('Library key')||'';if(!KEY){setMine('A key is needed to save.',true);return}}
+  
   setMine('Uploading '+list.length+(list.length===1?' file':' files')+'. Large files can take a while.');
   const b=$('#save');b.disabled=true;
   try{
