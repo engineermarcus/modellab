@@ -296,24 +296,37 @@ $('#file').onchange=e=>{
 
 /* ---------- convert ---------- */
 const W=(p,ms,l)=>Promise.race([p,new Promise((_,rj)=>setTimeout(()=>rj(new Error('Stuck at: '+l+' (waited '+ms/1000+'s)')),ms))]);
+const upl=(blob,name,cb)=>new Promise((ok,no)=>{const x=new XMLHttpRequest(),f=new FormData();f.append('files',blob,name);x.open('POST',API+'/gradio_api/upload');x.upload.onprogress=e=>{if(e.lengthComputable)cb(e.loaded/e.total)};x.onerror=()=>no(new Error('network error during upload'));x.onload=()=>{let j;try{j=JSON.parse(x.responseText)}catch(e){}x.status<300&&j&&j[0]?ok(j[0]):no(new Error('upload rejected (HTTP '+x.status+')'))};x.send(f)});
+const dlb=async(u,cb)=>{const r=await fetch(u);if(!r.ok)throw new Error('download failed (HTTP '+r.status+')');const tot=+r.headers.get('content-length')||0,rd=r.body.getReader(),ch=[];let n=0;for(;;){const {done,value}=await rd.read();if(done)break;ch.push(value);n+=value.length;cb(n,tot)}return new Blob(ch)};
+const mb=n=>(n/1e6).toFixed(1);
 el.conv.onclick=async()=>{
   const it=curItem;if(!it||it.ext!=='glb')return;
   el.conv.disabled=true;el.conv.textContent='Converting';
-  setMsg('Sending to the converter. The first run can take a minute while the server wakes up.');
+  let tick=null,to=null;
   try{
-    setMsg('Step 1/4: loading converter client');const {Client}=await W(import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js'),30000,'step 1, loading the converter client');
-    setMsg('Step 2/4: connecting to the Space');const app=await W(Client.connect(SPACE),40000,'step 2, connecting to the Space');
-    setMsg('Step 3/4: reading the model file');const blob=await W(fetch(it.url).then(r=>r.blob()),40000,'step 3, reading the model file');
-    setMsg('Step 4/4: uploading and converting');const res=await Promise.race([app.predict('/convert',[new File([blob],it.name)]),new Promise((_,rj)=>setTimeout(()=>rj(new Error('Timed out after 90s waiting for the converter')),90000))]);
-    const f=res.data[0];
-    const out=await (await fetch(f.url)).blob();
+    const src=await dlb(it.url,(n,t)=>setMsg('Step 1/4: reading the model, '+(t?Math.round(n/t*100)+'%':mb(n)+' MB')));
+    const path=await upl(src,it.name,p=>setMsg('Step 2/4: uploading, '+Math.round(p*100)+'%'));
+    const t0=Date.now(),ab=new AbortController();
+    to=setTimeout(()=>ab.abort(),300000);
+    const clock=()=>{const s=Math.round((Date.now()-t0)/1000);setMsg('Step 3/4: converting on the server, '+Math.floor(s/60)+':'+String(s%60).padStart(2,'0')+' elapsed. The converter cannot report a percentage.')};
+    clock();tick=setInterval(clock,500);
+    const j=await fetch(API+'/gradio_api/call/convert',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:[{path,meta:{_type:'gradio.FileData'}}]}),signal:ab.signal});
+    if(!j.ok)throw new Error('the converter rejected the file (HTTP '+j.status+')');
+    const {event_id}=await j.json();
+    const txt=await (await fetch(API+'/gradio_api/call/convert/'+event_id,{signal:ab.signal})).text();
+    clearTimeout(to);clearInterval(tick);tick=null;
+    const m=txt.match(/event: complete\s*\ndata: (.*)/);
+    if(!m){const em=txt.match(/event: error\s*\ndata: (.*)/);throw new Error('converter error: '+((em&&em[1])||'no result').slice(0,200))}
+    const d=JSON.parse(m[1]);
+    const out=await dlb(d[0].url,(n,t)=>setMsg('Step 4/4: downloading the result, '+(t?Math.round(n/t*100)+'% ('+mb(n)+' of '+mb(t)+' MB)':mb(n)+' MB')));
     const nit=makeItem({name:it.name.replace(/\.glb$/i,'.fbx'),url:URL.createObjectURL(out),size:out.size,source:'yours'});
-    nit.log=res.data[1];nit.file=new File([out],nit.name);addMine(nit);show(nit);
+    nit.log=d[1];nit.file=new File([out],nit.name);addMine(nit);show(nit);
     setMsg('Converted. Download the FBX and upload it to Mixamo for rigging.');
   }catch(e){
-    const t=e&&(e.message||(typeof e==='string'?e:JSON.stringify(e)))||'';
-    setMsg("Couldn't convert this file. The server may be asleep or busy, so try again in a minute. "+t,true);
+    const t=e&&e.name==='AbortError'?'timed out after 5 minutes waiting for the converter':(e&&e.message)||String(e);
+    setMsg("Couldn't convert this file: "+t,true);
   }
+  if(tick)clearInterval(tick);if(to)clearTimeout(to);
   el.conv.disabled=false;el.conv.textContent='Convert to FBX';
 };
 
