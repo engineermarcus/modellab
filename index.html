@@ -105,7 +105,7 @@ footer a{color:var(--ink)}
     <p id="note" hidden style="color:var(--gray)"></p><p id="empty" hidden>No models match. Clear the search or pick another group.</p>
     <div class="sec" id="mine" hidden>
       <h3>Your files</h3>
-      <p>Files you add or convert here. They stay in this browser tab.</p>
+      <p>Files you add or convert here stay in this browser tab until you save them to the library.</p><button class="btn" id="save" type="button">Save to library</button> <span id="mineMsg" style="font-size:14px;color:var(--gray)"></span>
       <div class="grid" id="minegrid"></div>
     </div>
     <footer>Built by <a href="https://github.com/engineermarcus">engineermarcus</a>. Conversion runs on a Hugging Face Space.</footer>
@@ -281,7 +281,7 @@ $('#q').oninput=e=>{qv=e.target.value.trim().toLowerCase();apply()};
 function addMine(it){items.push(it);$('#mine').hidden=false;$('#minegrid').prepend(cardFor(it))}
 $('#file').onchange=e=>{
   let last;
-  for(const f of e.target.files){if(!/\.(glb|fbx)$/i.test(f.name))continue;last=makeItem({name:f.name,url:URL.createObjectURL(f),size:f.size,source:'yours'});addMine(last)}
+  for(const f of e.target.files){if(!/\.(glb|fbx)$/i.test(f.name))continue;last=makeItem({name:f.name,url:URL.createObjectURL(f),size:f.size,source:'yours'});last.file=f;addMine(last)}
   e.target.value='';if(last){show(last);if(innerWidth<960)stageEl.scrollIntoView({behavior:reduce?'auto':'smooth'})}
 };
 
@@ -298,7 +298,7 @@ el.conv.onclick=async()=>{
     const f=res.data[0];
     const out=await (await fetch(f.url)).blob();
     const nit=makeItem({name:it.name.replace(/\.glb$/i,'.fbx'),url:URL.createObjectURL(out),size:out.size,source:'yours'});
-    nit.log=res.data[1];addMine(nit);show(nit);
+    nit.log=res.data[1];nit.file=new File([out],nit.name);addMine(nit);show(nit);
     setMsg('Converted. Download the FBX and upload it to Mixamo for rigging.');
   }catch(e){
     const t=e&&(e.message||(typeof e==='string'?e:JSON.stringify(e)))||'';
@@ -307,6 +307,32 @@ el.conv.onclick=async()=>{
   el.conv.disabled=false;el.conv.textContent='Convert to FBX';
 };
 
+function setMine(t,err){const m=$('#mineMsg');m.textContent=t;m.style.color=err?'var(--err)':'var(--gray)'}
+async function refreshLib(){
+  const m=await loadList();const have=new Set(lib().map(i=>i.name));
+  for(const x of m){if(have.has(x.name))continue;const it=makeItem({name:x.name,url:API+'/api/asset/'+encodeURIComponent(x.name)+'?key='+encodeURIComponent(KEY),size:x.size});items.push(it);$('#grid').append(cardFor(it))}
+  $('#count').textContent=lib().length;chips();apply();
+}
+$('#save').onclick=async()=>{
+  const list=items.filter(i=>i.source==='yours'&&i.file&&!i.saved);
+  if(!list.length){setMine('Nothing new to save.');return}
+  if(!KEY){KEY=prompt('Library key')||'';if(!KEY){setMine('A key is needed to save.',true);return}}
+  setMine('Uploading '+list.length+(list.length===1?' file':' files')+'. Large files can take a while.');
+  const b=$('#save');b.disabled=true;
+  try{
+    const {Client}=await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
+    const app=await Client.connect(SPACE);
+    const res=await app.predict('/upload',[list.map(i=>i.file),KEY]);
+    list.forEach(i=>{i.saved=true});localStorage.setItem('lk',KEY);
+    setMine(String(res.data[0]).split('\n')[0]);
+    await refreshLib();
+  }catch(e){
+    const t=e&&(e.message||(typeof e==='string'?e:JSON.stringify(e)))||'';
+    if(/key/i.test(t)){KEY='';localStorage.removeItem('lk')}
+    setMine("Couldn't save: "+t,true);
+  }
+  b.disabled=false;
+};
 /* ---------- start ---------- */
 (async()=>{
   try{
