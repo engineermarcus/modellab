@@ -339,21 +339,23 @@ async function refreshLib(){
 $('#save').onclick=async()=>{
   const list=items.filter(i=>i.source==='yours'&&i.file&&!i.saved);
   if(!list.length){setMine('Nothing new to save.');return}
-  
-  setMine('Uploading '+list.length+(list.length===1?' file':' files')+'. Large files can take a while.');
   const b=$('#save');b.disabled=true;
   try{
-    const {Client}=await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
-    const app=await Client.connect(SPACE);
-    const res=await app.predict('/upload',[list.map(i=>i.file),KEY]);
-    list.forEach(i=>{i.saved=true});localStorage.setItem('lk',KEY);
-    setMine(String(res.data[0]).split('\n')[0]);
+    const paths=[];
+    for(let k=0;k<list.length;k++){
+      paths.push(await upl(list[k].file,list[k].name,p=>setMine('Uploading '+(k+1)+' of '+list.length+', '+Math.round(p*100)+'%')));
+    }
+    setMine('Saving to the library...');
+    const j=await fetch(API+'/gradio_api/call/upload',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:[paths.map(path=>({path,meta:{_type:'gradio.FileData'}})),KEY]})});
+    if(!j.ok)throw new Error('HTTP '+j.status);
+    const {event_id}=await j.json();
+    const txt=await (await fetch(API+'/gradio_api/call/upload/'+event_id)).text();
+    const m=txt.match(/event: complete\s*\ndata: (.*)/);
+    if(!m){const em=txt.match(/event: error\s*\ndata: (.*)/);throw new Error((em&&em[1])||'no result from the server')}
+    list.forEach(i=>{i.saved=true});
+    setMine(String(JSON.parse(m[1])[0]).split('\n')[0]);
     await refreshLib();
-  }catch(e){
-    const t=e&&(e.message||(typeof e==='string'?e:JSON.stringify(e)))||'';
-    if(/key/i.test(t)){KEY='';localStorage.removeItem('lk')}
-    setMine("Couldn't save: "+t,true);
-  }
+  }catch(e){setMine("Couldn't save: "+((e&&e.message)||String(e)),true)}
   b.disabled=false;
 };
 /* ---------- start ---------- */
