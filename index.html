@@ -97,12 +97,12 @@ footer a{color:var(--ink)}
   <section class="lib">
     <h2>Library <small id="count"></small></h2>
     <p class="lead">Orbit any model, play its animations, and convert a glb to FBX for rigging in Mixamo. Everything renders in your browser.</p>
-    <div class="tools">
+    <p class="lead"><a href="https://huggingface.co/spaces/marx21/cortex-lexicon" target="_blank" rel="noopener">Upload to the library</a></p><div class="tools">
       <input id="q" type="search" placeholder="Search models" aria-label="Search models" autocomplete="off">
       <div id="chips"></div>
     </div>
     <div class="grid" id="grid"></div>
-    <p id="empty" hidden>No models match. Clear the search or pick another group.</p>
+    <p id="note" hidden style="color:var(--gray)"></p><p id="empty" hidden>No models match. Clear the search or pick another group.</p>
     <div class="sec" id="mine" hidden>
       <h3>Your files</h3>
       <p>Files you add or convert here. They stay in this browser tab.</p>
@@ -199,7 +199,7 @@ async function show(it){
   if(it.card)it.card.setAttribute('aria-current','true');
   el.title.textContent=it.title;el.title.classList.remove('in');void el.title.offsetWidth;el.title.classList.add('in');
   el.meta.textContent=[it.cat,it.size?(it.size/1e6).toFixed(1)+' MB':''].filter(Boolean).join(', ');
-  el.dl.href=it.url;el.dl.download=it.name;
+  el.dl.href=it.url;el.dl.download=it.name;el.dl.onclick=async ev=>{if(it.url.startsWith('blob:'))return;ev.preventDefault();try{const b=await (await fetch(it.url)).blob();const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=it.name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000)}catch(e){location.href=it.url}};
   el.conv.hidden=it.ext!=='glb';
   el.logd.hidden=!it.log;el.log.textContent=it.log||'';
   el.clips.replaceChildren();el.play.hidden=true;setMsg('');
@@ -318,7 +318,7 @@ el.conv.onclick=async()=>{
     const first=L.find(i=>/dragon/i.test(i.name))||L.find(i=>i.cat==='Characters')||L[0];
     if(first)show(first);
   }catch(e){
-    $('#empty').hidden=false;$('#empty').textContent='The library did not load. Add your own glb or FBX files with the button above.';
+    const n=$('#note');n.hidden=false;n.textContent='The library did not load'+(e&&e.message?' ('+e.message+')':'')+'. Reload to try again, or add your own files with the button above.';localStorage.removeItem('lk');
   }
   resize();
 })();
